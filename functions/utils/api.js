@@ -9,21 +9,19 @@ exports.matchImages = (images, gallery_name) => {
   return Promise.all(images.map(image => client.recognize({ image, gallery_name }))).then(
     matchDocs => {
       const matches = matchDocs.map(doc => doc.body.images);
-      const res = {};
-      console.log("matches: ", matches);
-      matches.forEach((match, i) => {
+      return matches.reduce((acc, match, i) => {
         match.forEach(obj => {
           if (obj.candidates) {
             obj.candidates.forEach(candidate => {
-              if (!res[candidate.subject_id]) {
-                res[candidate.subject_id] = [images[i]];
-              } else res[candidate.subject_id].push(images[i]);
+              if (!acc[candidate.subject_id]) {
+                acc[candidate.subject_id] = [images[i]];
+              } else if (!acc[candidate.subject_id].includes(images[i]))
+                acc[candidate.subject_id].push(images[i]);
             });
           }
         });
-      });
-
-      return res;
+        return acc;
+      }, {});
     }
   );
 };

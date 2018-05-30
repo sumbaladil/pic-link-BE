@@ -52,9 +52,20 @@ exports.enrollFace = functions.firestore
               acc.push(...doc.data().uploadedImages);
               return acc;
             }, []);
-            console.log("allImageUrls: ", allImageUrls);
+
             return matchImages(allImageUrls, "profilePics").then(matchObj => {
-              console.log(matchObj);
+              const promises = [];
+              for (let uid in matchObj) {
+                const userDocRef = db.collection("users").doc(uid);
+                promises.push(
+                  userDocRef.get().then(userDoc => {
+                    userDocRef.update({
+                      matchedImages: [...userDoc.data().matchedImages, ...matchObj[uid]]
+                    });
+                  })
+                );
+              }
+              return Promise.all(promises);
             });
           });
       });
