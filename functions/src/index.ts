@@ -10,7 +10,7 @@ const { removeDuplicates } = require("../utils/helpers");
 const Kairos = require("kairos-api");
 const client = new Kairos(appId, appKey);
 
-const kairosGallery = "test3";
+const kairosGallery = "test";
 
 // exports.createUser = functions.auth.user().onCreate(user => {
 //   if (user.metadata.photographer) {
@@ -46,7 +46,7 @@ exports.enrollFace = functions.firestore
       const params = {
         image: currImg,
         subject_id: userId,
-        gallery_name: kairosGallery
+        gallery_name: userId
       };
       return client.enroll(params).then(data => {
         return db
@@ -58,7 +58,8 @@ exports.enrollFace = functions.firestore
               return acc;
             }, []);
 
-            return matchImages(allImageUrls, kairosGallery).then(matchObj => {
+            return matchImages(allImageUrls, userId).then(matchObj => {
+              if (!Object.keys(matchObj).length) return null;
               const promises = [];
               for (let uid in matchObj) {
                 const userDocRef = db.collection("users").doc(uid);
@@ -76,6 +77,10 @@ exports.enrollFace = functions.firestore
               }
               return Promise.all(promises);
             });
+          })
+          .then(updatedDocs => {
+            params.gallery_name = kairosGallery;
+            return client.enroll(params);
           });
       });
     }

@@ -10,16 +10,19 @@ exports.matchImages = (images, gallery_name) => {
     matchDocs => {
       const matches = matchDocs.map(doc => doc.body.images);
       return matches.reduce((acc, match, i) => {
-        match.forEach(obj => {
-          if (obj.candidates) {
-            obj.candidates.forEach(candidate => {
-              if (!acc[candidate.subject_id]) {
-                acc[candidate.subject_id] = [images[i]];
-              } else if (!acc[candidate.subject_id].includes(images[i]))
-                acc[candidate.subject_id].push(images[i]);
-            });
-          }
-        });
+        if (match) {
+          match.forEach(obj => {
+            if (obj.candidates) {
+              obj.candidates.forEach(candidate => {
+                if (!acc[candidate.subject_id]) {
+                  acc[candidate.subject_id] = [images[i]];
+                } else if (!acc[candidate.subject_id].includes(images[i]))
+                  acc[candidate.subject_id].push(images[i]);
+              });
+            }
+          });
+        }
+
         return acc;
       }, {});
     }
