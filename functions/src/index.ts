@@ -4,44 +4,49 @@ admin.initializeApp();
 const db = admin.firestore();
 
 const { appId, appKey } = require("../config");
-const { matchImages } = require("../utils/api");
+const { matchImages } = require("../utils/kairos");
+const { removeDuplicates } = require("../utils/helpers");
 
 const Kairos = require("kairos-api");
 const client = new Kairos(appId, appKey);
 
-exports.createUser = functions.auth.user().onCreate(user => {
-  if (user.metadata.photographer) {
-    return db
-      .collection("photographers")
-      .doc(user.uid)
-      .set({
-        displayName: user.displayName,
-        email: user.email,
-        uploadedImages: []
-      });
-  }
-  return db
-    .collection("users")
-    .doc(user.uid)
-    .set({
-      displayName: user.displayName,
-      email: user.email,
-      profilePics: [],
-      matchedImages: []
-    });
-});
+const kairosGallery = "test3";
+
+// exports.createUser = functions.auth.user().onCreate(user => {
+//   if (user.metadata.photographer) {
+//     return db
+//       .collection("photographers")
+//       .doc(user.uid)
+//       .set({
+//         displayName: user.displayName,
+//         email: user.email,
+//         uploadedImages: []
+//       });
+//   }
+//   return db
+//     .collection("users")
+//     .doc(user.uid)
+//     .set({
+//       displayName: user.displayName,
+//       email: user.email,
+//       profilePic: '',
+//       matchedImages: []
+//     });
+// });
 
 exports.enrollFace = functions.firestore
   .document("users/{userId}")
-  .onUpdate((change, context) => {
-    const prevImg = change.before.data().profilePic;
+  .onWrite((change, context) => {
+    if (!change.after.exists) return null;
+    const { userId } = context.params;
     const currImg = change.after.data().profilePic;
+    const prevImg = change.before.exists ? change.before.data().profilePic : "";
 
     if (currImg !== prevImg) {
       const params = {
         image: currImg,
-        subject_id: context.params.userId,
-        gallery_name: "profilePics"
+        subject_id: userId,
+        gallery_name: kairosGallery
       };
       return client.enroll(params).then(data => {
         return db
@@ -53,14 +58,18 @@ exports.enrollFace = functions.firestore
               return acc;
             }, []);
 
-            return matchImages(allImageUrls, "profilePics").then(matchObj => {
+            return matchImages(allImageUrls, kairosGallery).then(matchObj => {
               const promises = [];
               for (let uid in matchObj) {
                 const userDocRef = db.collection("users").doc(uid);
                 promises.push(
                   userDocRef.get().then(userDoc => {
+                    const matchedImages = removeDuplicates([
+                      ...userDoc.data().matchedImages,
+                      ...matchObj[uid]
+                    ]);
                     userDocRef.update({
-                      matchedImages: [...userDoc.data().matchedImages, ...matchObj[uid]]
+                      matchedImages
                     });
                   })
                 );
@@ -70,8 +79,39 @@ exports.enrollFace = functions.firestore
           });
       });
     }
-    return;
+    return null;
   });
+
+exports.handlePhotographerUploads = functions.firestore
+  .document("photographers/{photographerId}")
+  .onUpdate((change, context) => {
+    const prevImgs = change.before.data().uploadedImages;
+    const currImgs = change.after.data().uploadedImages;
+
+    if (currImgs.length > prevImgs.length) {
+      return matchImages(currImgs.slice(prevImgs.length), kairosGallery).then(matchObj => {
+        const promises = [];
+        for (let uid in matchObj) {
+          const userDocRef = db.collection("users").doc(uid);
+          promises.push(
+            userDocRef.get().then(userDoc => {
+              if (!userDoc.exists) return null;
+              const matchedImages = removeDuplicates([
+                ...userDoc.data().matchedImages,
+                ...matchObj[uid]
+              ]);
+              return userDocRef.update({
+                matchedImages
+              });
+            })
+          );
+        }
+        return Promise.all(promises);
+      });
+    }
+    return null;
+  });
+
 // exports.updateUserMatchedImages = functions.storage.object().onFinalize(image => {
 //   const { uid } = image.data.metadata.uid;
 // });
